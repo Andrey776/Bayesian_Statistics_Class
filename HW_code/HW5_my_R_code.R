@@ -42,7 +42,7 @@ plot(beta, b_posterior, ylab = "density",
      ylim=c(0,1.6*max(b_posterior))) 
 b_clt_approxim = dnorm(beta, m, sqrt(var))
 lines(beta, b_clt_approxim, col = "blue")
-legend("topright", legend = c("unnorm true", "proposal"),
+legend("topright", legend = c("unnorm posterior", "proposal"),
        col = c("orange", "blue"), lty = 1)
 title("proposal distribution for MPH algorithm")
 # NB: 
@@ -151,18 +151,18 @@ log_q_alpha_v = sapply(alpha, log_q_alpha_1, y=y)
 m_a=alpha[which.max(log_q_alpha_v)]
 var_a = 0.022
 proposal = dnorm(alpha, m_a, sqrt(var_a))
-norm_const_a = 2.0e-76
-plot(alpha, exp(log_q_alpha_v)/(norm_const_a), 
+scale_const_a = 2.0e-76
+plot(alpha, exp(log_q_alpha_v)/(scale_const_a), 
      ylab = "unnorm_post_dens_alpha_scaled", 
      type = "l", col = "green",
      ylim = c(0, max(proposal)*1.05))
  
 lines(alpha, proposal, col = "blue")
-abline(v=m, col = "black", lty=1)
+abline(v=m_a, col = "black", lty=1)
 legend("topright", 
-       legend = c("unnorm_true", "proposal", "max"),
+       legend = c("unnorm_post", "proposal", "max"),
        col = c("green", "blue", "black"), lty = 1)
-title("proposal distribution for MPH algorithm")
+title("proposal distribution for the MPH algorithm")
 
 
 ### 2c
@@ -171,17 +171,17 @@ mh_a = function(B, start, jump_parm) { # USE sigma^2 here for normal
   sigma = sqrt(jump_parm[2])
   theta = numeric(B + 1)
   theta[1] = start
-  log_norm_const_a = log(norm_const_a)
+  log_scale_const_a = log(scale_const_a)
   for (i in 2:length(theta)) {
     theta_star = rnorm(1, mu, sigma)
     while ((theta_star < 1)|(theta_star > 5)) {
       theta_star = rnorm(1, mu, sigma)
     }
     num_logr = log_q_alpha_1(y, theta_star) - 
-                  log_norm_const_a -
+                  log_scale_const_a -
       dnorm(theta_star, mu, sigma, log = TRUE)
     den_logr = (log_q_alpha_1(y, theta[i-1]) - 
-                  log_norm_const_a) -
+                  log_scale_const_a) -
       dnorm(theta[i-1], mu, sigma, log = TRUE)
     logr = num_logr - den_logr
     
