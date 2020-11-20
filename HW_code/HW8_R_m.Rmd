@@ -1,0 +1,360 @@
+---
+title: "HW8_R_m"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+devtools::install_github("stan-dev/loo")
+library(data.table)
+library(dplyr)
+library(rstan) 
+library(xts)
+library(lubridate)
+library(ggplot2)
+library(shinystan)
+#install.packages('loo')
+library(loo)
+
+number = c(8.0, 9.0, 9.1, 10.2, 10.4, 10.0, 10.3, 12.2, 12.6, 13.9)
+day = rep(1:5, 2)
+type = factor(rep(c("A", "B"), each = 5))
+bacteria = data.frame(day, number, type)
+```
+
+```{r scatterplot}
+ggplot(data=bacteria, aes(x = day, y = number, colour = type, shape = type)) + 
+  geom_point() +
+  labs(title = "Number of type A and type B bacteria", 
+       x = "day", 
+       y = "number of bacteria, thsd") + 
+  theme(plot.title = element_text(lineheight=.8, face="bold"), 
+           axis.title.x = element_text(size = 14),
+           axis.title.y = element_text(size = 14))
+```
+
+```{r Model 1}
+
+####  Model 1: A one-way ANOVA using type = “A” as the reference category.
+
+# Create a dummy variable
+type_b = c(type == 'B')
+
+# Create model
+stanmod = "
+data {
+  int<lower=1> n; // number of observations
+  vector[n] y; // data
+  vector[n] type_b; //indicator for type b
+  real<lower=0> v_sample; // sample variance of y
+  real mu_sample; // sample mean of y
+
+}
+
+parameters {
+  real mu_0;
+  real alpha_b;
+  real<lower=0> sigmasq;
+
+}
+
+transformed parameters {
+  vector[n] mu;        // mean of observations
+  mu = mu_0 + alpha_b*type_b;
+
+}
+model {
+
+  // priors
+  mu_0 ~ normal(mu_sample, 10 * sqrt(v_sample));
+  alpha_b ~ normal(0.0, 100); 
+  sigmasq ~ inv_gamma(0.01, 0.01);
+
+  // data distribution
+  for(i in 1:n){
+    y[i] ~ normal(mu[i], sqrt(sigmasq));
+  }
+}
+generated quantities {
+  real Rbsq;          // goodness-of-fit
+  vector[n] log_lik;  // log likelihood of data
+  Rbsq = 1 - sigmasq/v_sample;
+  for (i in 1:n) log_lik[i] = normal_lpdf(y[i]|mu[i], sqrt(sigmasq));
+}
+"
+
+stan_dat = list(n = length(number), y = number,
+                type_b = type_b, v_sample = var(number), mu_sample = mean(number))
+
+stan_fit = stan(model_code = stanmod, data = stan_dat, iter = 10^4)
+#sso <- launch_shinystan(stan_fit)
+
+# Mean, 0.025 quantile, and 0.975 quantile
+summary(stan_fit)$summary[,c("mean", "2.5%", "97.5%")]
+
+summary(stan_fit)$summary
+
+# Gelman-Rubin statistic
+summary(stan_fit)$summary[,"Rhat"]
+
+# check convergence with trace plots
+#stan_trace(stan_fit, c("mu_0", "alpha_b", "sigmasq"))
+
+# Check the ACF of draws
+stan_ac(stan_fit, c("mu_0", "alpha_b", "sigmasq"))
+
+# WAIC and LOOC
+log_lik = extract_log_lik(stan_fit, merge_chains = FALSE)
+r_eff = exp(relative_eff(log_lik))
+
+waic(log_lik)
+loo(log_lik, r_eff = r_eff)
+
+```
+
+```{r Model 2}
+
+####  Model 2: A simple linear regression model using day as the predictor.
+
+# Create model
+stanmod = "
+data {
+  int<lower=1> n; // number of observations
+  vector[n] y; // data
+  vector[n] day; //day
+  real<lower=0> v_sample; // sample variance of y
+  real mu_sample; // sample mean of y
+
+}
+
+parameters {
+  real beta_0;
+  real beta_1;
+  real<lower=0> sigmasq;
+
+}
+
+transformed parameters {
+  vector[n] mu;        // mean of observations
+  mu = beta_0 + beta_1*day;
+
+}
+model {
+
+  // priors
+  beta_0 ~ normal(0, 100);
+  beta_1 ~ normal(0 , 100); 
+  sigmasq ~ inv_gamma(0.01, 0.01);
+
+  // data distribution
+  for(i in 1:n){
+    y[i] ~ normal(mu[i], sqrt(sigmasq));
+  }
+}
+generated quantities {
+  real Rbsq;          // goodness-of-fit
+  vector[n] log_lik;  // log likelihood of data
+  Rbsq = 1 - sigmasq/v_sample;
+  for (i in 1:n) log_lik[i] = normal_lpdf(y[i]|mu[i], sqrt(sigmasq));
+}
+"
+
+stan_dat = list(n = length(number), y = number,
+                day = bacteria$day, v_sample = var(number), mu_sample = mean(number))
+
+stan_fit = stan(model_code = stanmod, data = stan_dat, iter = 10^5)
+#sso <- launch_shinystan(stan_fit)
+
+# Mean, 0.025 quantile, and 0.975 quantile
+pl_cpi = summary(stan_fit)$summary[,c("mean", "2.5%", "97.5%")]
+print(pl_cpi, digits = 2)
+
+summary(stan_fit)$summary
+
+# Gelman-Rubin statistic
+summary(stan_fit)$summary[,"Rhat"]
+
+# check convergence with trace plots
+stan_trace(stan_fit, c("beta_0", "beta_1", "sigmasq"))
+
+# Check the ACF of draws
+stan_ac(stan_fit, c("beta_0", "beta_1", "sigmasq"))
+
+# WAIC and LOOC
+log_lik = extract_log_lik(stan_fit, merge_chains = FALSE)
+r_eff = exp(relative_eff(log_lik))
+
+waic(log_lik)
+loo(log_lik, r_eff = r_eff)
+
+```
+
+```{r Model 3}
+### A parallel lines (main effects) model using day as the quantitative predictor and using type = “A” as the reference category.
+type_b = c(type == 'B')
+
+# Create model
+stanmod = "
+data {
+  int<lower=1> n; // number of observations
+  vector[n] y; // data
+  vector[n] day; //day
+  vector[n] type_b; // 
+  real<lower=0> v_sample; // sample variance of y
+  real mu_sample; // sample mean of y
+
+}
+
+parameters {
+  real beta_0;
+  real beta_1;
+  real alpha_b;
+  real<lower=0> sigmasq;
+
+}
+
+transformed parameters {
+  vector[n] mu;        // mean of observations
+  mu = beta_0 + beta_1 * day + alpha_b * type_b;
+
+}
+model {
+
+  // priors
+  beta_0 ~ normal(0, 100);
+  beta_1 ~ normal(0 , 100); 
+  alpha_b ~ normal(0, 100);
+  sigmasq ~ inv_gamma(0.01, 0.01);
+
+  // data distribution
+  for(i in 1:n){
+    y[i] ~ normal(mu[i], sqrt(sigmasq));
+  }
+}
+generated quantities {
+  real Rbsq;          // goodness-of-fit
+  vector[n] log_lik;  // log likelihood of data
+  Rbsq = 1 - sigmasq/v_sample;
+  for (i in 1:n) log_lik[i] = normal_lpdf(y[i]|mu[i], sqrt(sigmasq));
+}
+"
+
+stan_dat = list(n = length(number), y = number, type_b = type_b,
+                day = bacteria$day, v_sample = var(number), mu_sample = mean(number))
+
+stan_fit = stan(model_code = stanmod, data = stan_dat, iter = 10^5)
+#sso <- launch_shinystan(stan_fit)
+
+# Mean, 0.025 quantile, and 0.975 quantile
+pl_cpi = summary(stan_fit)$summary[,c("mean", "2.5%", "97.5%")]
+print(pl_cpi, digits = 2)
+
+summary(stan_fit)$summary
+
+# Gelman-Rubin statistic
+summary(stan_fit)$summary[,"Rhat"]
+
+# check convergence with trace plots
+stan_trace(stan_fit, c("beta_0", "beta_1", "sigmasq"))
+
+# Check the ACF of draws
+stan_ac(stan_fit, c("beta_0", "beta_1", "sigmasq"))
+
+# WAIC and LOOC
+log_lik = extract_log_lik(stan_fit, merge_chains = FALSE)
+r_eff = exp(relative_eff(log_lik))
+
+waic(log_lik)
+loo(log_lik, r_eff = r_eff)
+
+```
+
+```{r Model 4}
+#### A separate lines (interaction) model using day as the quantitative predictor and using type = “A” as the reference category
+
+type_b = c(type == 'B')
+
+# Create model
+stanmod = "
+data {
+  int<lower=1> n; // number of observations
+  vector[n] y; // data
+  vector[n] day; //day
+  vector[n] type_b; // 
+  real<lower=0> v_sample; // sample variance of y
+  real mu_sample; // sample mean of y
+
+}
+
+parameters {
+  real beta_0;
+  real beta_1;
+  real alpha_b;
+  real delta_b;
+  real<lower=0> sigmasq;
+
+}
+
+transformed parameters {
+  vector[n] mu;        // mean of observations
+  for(i in 1:n){
+    mu[i] = beta_0 + alpha_b*type_b[i] + beta_1*day[i] + delta_b*day[i]*type_b[i];
+  }
+}
+model {
+
+  // priors
+  beta_0 ~ normal(0.0, 100);
+  beta_1 ~ normal(0.0, 100); 
+  delta_b ~ normal(0.0, 100);
+  alpha_b ~ normal(0.0, 100);
+
+  sigmasq ~ inv_gamma(0.01, 0.01);
+
+  // data distribution
+  for(i in 1:n){
+    y[i] ~ normal(mu[i], sqrt(sigmasq));
+  }
+}
+generated quantities {
+  real Rbsq;          // goodness-of-fit
+  vector[n] log_lik;  // log likelihood of data
+  Rbsq = 1 - sigmasq/v_sample;
+  for (i in 1:n) log_lik[i] = normal_lpdf(y[i]|mu[i], sqrt(sigmasq));
+}
+"
+
+stan_dat = list(n = length(number), y = number, type_b = type_b,
+                day = bacteria$day, v_sample = var(number), mu_sample = mean(number))
+
+stan_fit = stan(model_code = stanmod, data = stan_dat, iter = 10^5)
+#sso <- launch_shinystan(stan_fit)
+
+# Mean, 0.025 quantile, and 0.975 quantile
+pl_cpi = summary(stan_fit)$summary[,c("mean", "2.5%", "97.5%")]
+print(pl_cpi, digits = )
+
+summary(stan_fit)$summary
+
+# Gelman-Rubin statistic
+summary(stan_fit)$summary[,"Rhat"]
+
+# check convergence with trace plots
+stan_trace(stan_fit, c("beta_0", "beta_1", "sigmasq"))
+
+# Check the ACF of draws
+stan_ac(stan_fit, c("beta_0", "beta_1", "sigmasq"))
+
+# WAIC & LOOIC
+log_lik = extract_log_lik(stan_fit, merge_chains = FALSE)
+r_eff = exp(relative_eff(log_lik))
+
+waic(log_lik)
+loo(log_lik, r_eff = r_eff)
+
+#sso <- launch_shinystan(stan_fit)
+
+```
+
