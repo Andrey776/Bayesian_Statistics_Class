@@ -1,0 +1,82 @@
+---
+title: "7393 Exam 2 R Code Andrei Matveev"
+output: html_notebook
+---
+
+```{r Data}
+library(data.table)
+library(truncnorm)
+library(coda)
+library(rstan) 
+library(shinystan)
+
+
+devtools::install_github("jfrench/bayesutils")
+setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/code/Bayesian_Statistics_Class_Code/Exam_code')
+#df1 = load("diamonds_simple.rda")
+#rm(df1, diamonds_simple)
+df = bayesutils::diamonds_simple
+
+df$lprice = log(df$price)
+df$lcarat = log(df$carat)
+
+```
+
+```{r}
+
+```
+
+
+```{r Problem 3}
+stan_mod_AR1 = "
+data {
+  int T;
+  vector[T] y;
+  int T_out;
+  real<lower=0> v;  // sample variance of y
+  real mu_1;        // the first mu
+
+}
+
+parameters {
+  real alpha;
+  real beta;
+  //real<lower=-1,upper=1> beta;
+  real<lower=0> sigma;
+}
+transformed parameters {
+  vector[T] mu;
+  for (i in 2:T) {
+    mu[i] = alpha + beta * y[i-1];
+  }
+  mu[1] = mu_1;
+}
+model {
+  sigma ~ inv_gamma(1, 2);
+  alpha ~ normal(0, 1);
+  beta ~ normal(0, 1);
+  for (n in 2:T)
+    y[n] ~ normal(mu[n], sigma);
+}
+generated quantities {
+  vector[T_out] r_out;
+  vector[T] log_lik;
+  //vector[T] lik;
+  real Rbsq;              // goodness-of-fit
+  Rbsq = 1 - square(sigma)/v;
+  r_out[1] = normal_rng(alpha + beta * y[T], sigma);
+  
+  for (i in 2:T_out) {
+    r_out[i] = normal_rng(alpha + beta * y[i-1], sigma);
+  }
+  for (i in 1:T) {
+    log_lik[i] = normal_lpdf(y[i] | mu[i], sigma);
+    //lik[i] = exp(log_lik[i]);
+  }
+
+}
+"
+
+
+```
+
