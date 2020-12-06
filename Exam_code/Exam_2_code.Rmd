@@ -7,17 +7,16 @@ output: html_notebook
 library(data.table)
 library(truncnorm)
 library(coda)
+devtools::install_github("stan-dev/loo")
+library(loo)
 library(rstan) 
 library(shinystan)
 library(invgamma)
-
 library(bayesplot)
-install.packages("posterior", repos = c("https://mc-stan.org/r-packages/", getOption("repos")))
-library("posterior")
-devtools::install_github("stan-dev/loo")
-
+library(posterior)
 
 devtools::install_github("jfrench/bayesutils")
+
 setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/code/Bayesian_Statistics_Class_Code/Exam_code')
 #df1 = load("diamonds_simple.rda")
 #rm(df1, diamonds_simple)
@@ -279,11 +278,11 @@ r_fit_B = stan(model_code = stan_mod_B, data = stan_dat_B,
 #saveRDS(r_fit, file = file_name, compress = "xz") 
 summary(r_fit_B, pars = c("sigmaSQ", "beta0", "beta1", "beta2"), prob = c(0.025, 0.975))$summary
 
-sso <- launch_shinystan(r_fit_B)
+#sso <- launch_shinystan(r_fit_B)
 
 ```
 
-```{r Problem 4 Model A}
+```{r Problem 4 pp_check Model A}
 posterior <- as.matrix(r_fit_A)
 
 posterior <- as.array(r_fit_A)
@@ -370,3 +369,93 @@ summary(r_fit_C, pars = c("sigmaSQ", "beta0", "beta1"), prob = c(0.025, 0.975))$
 #sso <- launch_shinystan(r_fit_A)
 
 ```
+
+```{r Problem 5 Model D, include=FALSE}
+stan_mod_D = "
+data {
+  int T;
+  vector[T] pr;     //  price 
+  vector[T] lcar;   // log carat 
+  vector[T] notic;  //  noticeable 
+
+  real<lower=0> v;  // sample variance of log price 
+
+}
+
+parameters {
+  real<lower=0> sigmaSQ;
+  real beta0;
+  real beta1;
+  real beta2;
+}
+
+transformed parameters {
+  vector[T] mu;
+  for (i in 1:T) {
+    mu[i] = beta0 + beta1 * lcar[i] + beta2 * notic[i];
+  }
+
+}
+
+model {
+  sigmaSQ ~ inv_gamma(0.01, 0.01);
+  beta0 ~ normal(0, 100);
+  beta1 ~ normal(0, 100);
+  beta2 ~ normal(0, 100);
+
+
+  for (i in 1:T)
+    pr[i] ~ lognormal(mu[i], sqrt(sigmaSQ));
+}
+generated quantities {
+  vector[T] log_lik;
+  vector[T] y_rep;
+
+  //vector[T] lik;
+  real Rbsq;              // goodness-of-fit
+  Rbsq = 1 - sigmaSQ/v;
+  
+  for (i in 1:T) {
+    log_lik[i] = lognormal_lpdf(pr[i] | mu[i], sqrt(sigmaSQ));
+    y_rep[i] = lognormal_rng(mu[i], sqrt(sigmaSQ));
+    //lik[i] = exp(log_lik[i]);
+  }
+
+}
+"
+
+T <- length(df$price)
+v = var(df$price)
+set.seed(93)
+
+model_name = "Model_D_"
+stan_dat_D = list(T = T, pr = df$price, lcar = df$lcarat, 
+                  notic = as.integer(df$inclusions == "noticeable") , v = v)
+r_fit_D = stan(model_code = stan_mod_D, data = stan_dat_D, 
+             iter = 5000, chains = 4, 
+             control = list(max_treedepth = 21))
+
+#file_name = paste(model_name, as.character(Sys.Date()), ".rda", sep="")
+#setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/code/Bayesian_Statistics_Class_Code/Exam_code')
+#readRDS(r_fit, file = "") 
+#saveRDS(r_fit, file = file_name, compress = "xz") 
+
+summary(r_fit_D, pars = c("sigmaSQ", "beta0", "beta1", "beta2"), prob = c(0.025, 0.975))$summary
+
+#sso <- launch_shinystan(r_fit_A)
+
+```
+
+```{r Problem 6}
+waic_loo = function (fit) {
+  log_lik = extract_log_lik(fit, merge_chains = FALSE)
+  r_eff = exp(relative_eff(log_lik))
+  wl = c(waic(log_lik)$waic, loo(log_lik, r_eff = r_eff)$looic, )
+  return(wl)
+}
+wl = array(0, dim=c(2,4), dimnames = list(c("WAIC", "LOOIC"), 
+                                          c("Model A", "Model B","Model C","Model D")))
+wl[1,1] = waic_loo(r_fit_A)[1]
+
+```
+
