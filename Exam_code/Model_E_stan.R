@@ -82,7 +82,6 @@ waic_loo = function (fit) {
 cat("STAN Model E WAIC", waic_loo(r_fit_E)[1])
 cat("STAN Model E LOOIC", waic_loo(r_fit_E)[2])
 
-
 samples = extract(r_fit_E)
 ncycles = length(samples[[1]])
 T <- length(df_covid$bs)
@@ -97,5 +96,13 @@ for (i in seq_len(T)) {
   yrep[, i] = rpois(ncycles, lambda = exp(log_l))
 }
 
-ppc_intervals(y = df_covid$deaths, yrep = yrep) + ggtitle("Model A: Posterior predictive intervals to the observed data values") + xlab("State") + ylab("Covid deaths")
+ppc_intervals(y = df_covid$deaths, yrep = yrep, prob = 0.5, prob_outer = .95) + 
+  ggtitle("Model E: Posterior predictive intervals to the observed data values") + 
+  xlab("StateID") + 
+  ylab("Covid deaths")
 
+dif = ppc_intervals_data(y = df_covid$deaths, yrep = yrep, prob = 0.5, prob_outer = .95)
+
+dif$ratio = abs(dif$y_obs - dif$m)/ dif$y_obs
+cat("the worst prediction seems to be for StateID", which.max(dif$ratio), 
+    df_covid$state_name[which.max(dif$ratio)])

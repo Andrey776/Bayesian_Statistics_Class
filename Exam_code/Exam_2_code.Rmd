@@ -4,7 +4,7 @@ output: html_notebook
 ---
 ```{r Data and set up}
 
-library(data.table)
+#library(data.table)
 library(truncnorm)
 library(coda)
 devtools::install_github("stan-dev/loo")
@@ -13,7 +13,7 @@ library(rstan)
 library(shinystan)
 library(invgamma)
 library(bayesplot)
-library(posterior)
+#library(posterior)
 library(rstanarm)
 
 
@@ -429,9 +429,6 @@ data {
   vector[T] pr;     //  price 
   vector[T] lcar;   // log carat 
   vector[T] notic;  //  noticeable 
-
-  real<lower=0> v;  // sample variance of log price 
-
 }
 
 parameters {
@@ -446,7 +443,6 @@ transformed parameters {
   for (i in 1:T) {
     mu[i] = beta0 + beta1 * lcar[i] + beta2 * notic[i];
   }
-
 }
 
 model {
@@ -455,34 +451,33 @@ model {
   beta1 ~ normal(0, 100);
   beta2 ~ normal(0, 100);
 
-
   for (i in 1:T)
     pr[i] ~ lognormal(mu[i], sqrt(sigmaSQ));
 }
+
 generated quantities {
   vector[T] log_lik;
-  vector[T] y_rep;
+  vector[24] cond_mu_1;
+  vector[24] cond_mu_0;
 
-  //vector[T] lik;
-  real Rbsq;              // goodness-of-fit
-  Rbsq = 1 - sigmaSQ/v;
-  
   for (i in 1:T) {
     log_lik[i] = lognormal_lpdf(pr[i] | mu[i], sqrt(sigmaSQ));
-    y_rep[i] = lognormal_rng(mu[i], sqrt(sigmaSQ));
-    //lik[i] = exp(log_lik[i]);
   }
-
+  
+  for (i in 1:24) {
+    cond_mu_1[i] = exp(beta0 + beta1 * log(i/10.0) + beta2); // for noticable inclusions
+    cond_mu_0[i] = exp(beta0 + beta1 * log(i/10.0)); // for minor inclusions
+  }
+  
 }
 "
 
 T <- length(df$price)
-v = var(df$price)
 set.seed(93)
 
 model_name = "Model_D_"
 stan_dat_D = list(T = T, pr = df$price, lcar = df$lcarat, 
-                  notic = as.integer(df$inclusions == "noticeable") , v = v)
+                  notic = as.integer(df$inclusions == "noticeable"))
 r_fit_D = stan(model_code = stan_mod_D, data = stan_dat_D, 
              iter = 5000, chains = 4, 
              control = list(max_treedepth = 21))
@@ -519,42 +514,73 @@ wl[2,3] = waic_loo(r_fit_D)[2]
 wl
 ```
 
-```{r Problem 6b effects plots}
-samples = extract(r_fit_D)
-ncycles = length(samples[[1]])
-T <- length(df$price)
-df$notic = as.integer(df$inclusions == "noticeable")
+```{r Problem 6b effects plots Model D}
 
-# each row of yrep is a sample from the pp distribution
-yrep = matrix(0, ncol = T, nrow = ncycles)
-for (i in seq_len(T)) {
-  mui = samples$beta0 + samples$beta1 * df$lcarat[i] + samples$beta2 * df$notic[i]
-  yrep[, i] = rlnorm(ncycles, mean = mui, sd = sqrt(samples$sigmaSQ))
-}
+sim_cond_mu_1 = rstan::extract(r_fit_D)$cond_mu_1
+df_sim_cond_mu_1 = data.frame(
+  carat = seq(0.1, 2.4, by=0.1),
+  mean = apply(sim_cond_mu_1, 2, mean),
+  lo0025 = apply(sim_cond_mu_1, 2, quantile, 0.025),
+  hi0975 = apply(sim_cond_mu_1, 2, quantile, 0.975),
+  inclusion = "noticable"
+)
 
-color_scheme_set("blue")
-ppc_intervals_grouped(y = df$price, yrep = yrep, x = df$carat, prob = 0.5, prob_outer = .95, group = df$notic) + ggtitle("Model D: Posterior predictive intervals to the observed data values") + xlab("lcarat") + ylab("price")
+sim_cond_mu_0 = rstan::extract(r_fit_D)$cond_mu_0
+df_sim_cond_mu_0 = data.frame(
+  carat = seq(0.1, 2.4, by=0.1),
+  mean = apply(sim_cond_mu_0, 2, mean),
+  lo0025 = apply(sim_cond_mu_0, 2, quantile, 0.025),
+  hi0975 = apply(sim_cond_mu_0, 2, quantile, 0.975),
+  inclusion = "minor"
+)
 
+df_sim = rbind(df_sim_cond_mu_0, df_sim_cond_mu_1)
+rm(df_sim_cond_mu_0, df_sim_cond_mu_1)
 
-find_ep = function(yrep, min = 0.1, max = 2.4, step=0.1) {
-  ep = array(0, dim=c((max-min+step)/step, 5), dimnames = list(c(), c("carat_min", "carat_max", "2.5%","Mean","97.5%")))
-  n=0
-  for (i in seq(min+step, max, by=step)) {
-    n=n+1
-    subset = ((df$carat>(i-step)) & (df$carat<=i))
-    yrep_subset = yrep[,subset]
-    ep[n,1] = i-step
-    ep[n,2] = i
-    q = quantile(yrep_subset, probs = c(0.025, 0.975))
-    ep[n,3] = q[[1]]
-    ep[n,4] = mean(yrep_subset)
-    ep[n,5] = q[[2]]
-  }
-return(ep)
-}
+ggplot(df_sim,
+       aes(x = carat,
+           y = mean, colour = inclusion))+ 
+  geom_ribbon(aes(ymin = lo0025,
+                  ymax = hi0975),
+              fill = "lightgrey") +
+  geom_line()
 
-find_ep(yrep)
-temp = ppc_intervals_data(y = df$price, yrep = yrep, x = df$lcarat, prob = 0.5, prob_outer = .95, group = df$notic)
+```
+
+```{r Problem 6b effects plots Model D _ JUST THOUGHTS}
+# samples = extract(r_fit_D)
+# ncycles = length(samples[[1]])
+# T <- length(df$price)
+# #each row of yrep is a sample from the pp distribution
+# yrep = matrix(0, ncol = T, nrow = ncycles)
+# for (i in seq_len(T)) {
+#   mui = samples$beta0 + samples$beta1 * df$lcarat[i] +
+#     samples$beta2 * as.integer(df$inclusions[i]=="noticeable")
+#   yrep[, i] = rlnorm(ncycles, mean = mui, sd = sqrt(samples$sigmaSQ))
+# }
+# df$notic = as.integer(df$inclusions == "noticeable")
+# color_scheme_set("blue")
+# ppc_intervals_grouped(y = df$price, yrep = yrep, x = df$carat, prob = 0.5, prob_outer = .95, group = df$notic) + ggtitle("Model D: Posterior predictive intervals to the observed data values") + xlab("lcarat") + ylab("price")
+# # 
+# 
+# find_ep = function(yrep, min = 0.1, max = 2.4, step=0.1) {
+#   ep = array(0, dim=c((max-min+step)/step, 5), dimnames = list(c(), c("carat_min", "carat_max", "2.5%","Mean","97.5%")))
+#   n=0
+#   for (i in seq(min+step, max, by=step)) {
+#     n=n+1
+#     subset = ((df$carat>(i-step)) & (df$carat<=i))
+#     yrep_subset = yrep[,subset]
+#     ep[n,1] = i-step
+#     ep[n,2] = i
+#     q = quantile(yrep_subset, probs = c(0.025, 0.975))
+#     ep[n,3] = q[[1]]
+#     ep[n,4] = mean(yrep_subset)
+#     ep[n,5] = q[[2]]
+#   }
+# return(ep)
+# }
+# find_ep(yrep)
+# temp = ppc_intervals_data(y = df$price, yrep = yrep, x = df$lcarat, prob = 0.5, prob_outer = .95, group = df$notic)
 
 ```
 
@@ -635,18 +661,14 @@ fit_rstanarm_E = stan_glm(deaths ~ int + income + bs,
 
 summary(fit_rstanarm_E, digits = 6)
 
--0.000054 * 30697
-(24191 - 39682) * -0.000054
-
-(17.50 - 39.00) * 0.060348
 ```
 
-```{r Problem 7_c STAN Model E WAIC LOOIC}
+```{r Problem 8_c STAN Model E WAIC LOOIC}
 cat("STAN Model E WAIC", waic_loo(r_fit_E)[1])
 cat("STAN Model E LOOIC", waic_loo(r_fit_E)[2])
 ```
 
-```{r Problem 7_d STAN Model E ppc}
+```{r Problem 8_d STAN Model E ppc}
 samples = extract(r_fit_E)
 ncycles = length(samples[[1]])
 T <- length(df_covid$bs)
@@ -661,8 +683,102 @@ for (i in seq_len(T)) {
   yrep[, i] = rpois(ncycles, lambda = exp(log_l))
 }
 
-ppc_intervals(y = y, yrep = yrep, x = df_covid$state_abb) + ggtitle("Model A: Posterior predictive intervals to the observed data values") + xlab("State") + ylab("Covid deaths")
+ppc_intervals(y = df_covid$deaths, yrep = yrep, prob = 0.5, prob_outer = .95) + 
+  ggtitle("Model E: Posterior predictive intervals to the observed data values") + 
+  xlab("StateID") + ylab("Covid deaths")
+
+dif = ppc_intervals_data(y = df_covid$deaths, yrep = yrep, prob = 0.5, prob_outer = .95)
+dif$ratio = abs(dif$y_obs - dif$m)/ dif$y_obs
+cat("the worst prediction seems to be for StateID", which.max(dif$ratio), 
+    df_covid$state_name[which.max(dif$ratio)])
+
+-0.000054 * 30697
+(24191 - 39682) * -0.000054
+
+(17.50 - 39.00) * 0.060348
+```
+
+```{r Problem 9_a STAN Model F }
+stan_mod_F = "
+data {
+  int T;
+  int deaths[T]; // COVID-19 deaths
+  vector[T] log_pop;    // log of U.S. states population,
+  vector[T] income; // median income (USD)
+  vector[T] bs;     // percentage of the population with bachelor’s degrees.
+}
+
+parameters {
+  real beta0;
+  real beta1;
+  real beta2;
+  real phi;
+}
+transformed parameters {
+  real eta[T];
+  for (i in 1:T) {
+   eta[i] = exp(log_pop[i] + beta0 + beta1 * income[i] + beta2 * bs[i]);
+  }
+
+}
+
+model {
+  beta0 ~ normal(0, 5);
+  beta1 ~ normal(0, 5);
+  beta2 ~ normal(0, 5);
+  phi ~ gamma(0.01, 0.01);
+
+  for (i in 1:T) {
+    deaths[i] ~ neg_binomial_2_log(eta[i], phi);
+  }
+}
+generated quantities {
+  vector[T] log_lik;
+
+  for (i in 1:T) {
+    log_lik[i] = neg_binomial_2_log_lpmf(deaths[i] | eta[i],  phi);
+  }  
+  
+}
+
+"
+
+T <- length(df_covid$bs)
+set.seed(95)
+
+model_name = "Model_F_"
+stan_dat_F = list(T = T, deaths = df_covid$deaths, log_pop = log(df_covid$population), 
+                  income = df_covid$income, bs = df_covid$bs)
+r_fit_F = stan(model_code = stan_mod_F, data = stan_dat_F, 
+             iter = 5000, chains = 2, 
+             control = list(max_treedepth = 21))
+
+summary(r_fit_F, pars = c("beta0", "beta1", "beta2", "phi"), prob = c(0.025, 0.975))$summary
+
+#sso <- launch_shinystan(r_fit_F)
+file_name = paste(model_name, as.character(Sys.Date()), ".rda", sep="")
+setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/code/Bayesian_Statistics_Class_Code/Exam_code')
+#readRDS(r_fit, file = "") 
+#saveRDS(r_fit_E, file = file_name, compress = "xz") 
+```
+
+```{r Problem 9_b rstanarm Model F, include=FALSE}
+df_covid_rstan = data.frame(int = 1, 
+                            deaths = df_covid$deaths,
+                            log_pop = log(df_covid$population), 
+                            income = df_covid$income,
+                            bs = df_covid$bs)
+fit_rstanarm_F = stan_glm(deaths ~ int + income + bs, 
+                 offset = log_pop,
+                 family = neg_binomial_2,
+                 data = df_covid_rstan,
+                 iter = 10000, chains = 2)
+
+summary(fit_rstanarm_F, digits = 6)
 
 ```
 
-
+```{r Problem 9_c STAN Model F WAIC LOOIC}
+cat("STAN Model F WAIC", waic_loo(r_fit_F)[1])
+cat("STAN Model F LOOIC", waic_loo(r_fit_F)[2])
+```
