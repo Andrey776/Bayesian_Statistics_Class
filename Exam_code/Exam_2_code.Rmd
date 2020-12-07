@@ -25,6 +25,8 @@ df = bayesutils::diamonds_simple
 df$lprice = log(df$price)
 df$lcarat = log(df$carat)
 
+df_covid = bayesutils::covid_dec4
+
 ```
 
 ```{r Problem 1 log density Function}
@@ -312,9 +314,6 @@ ppc_dens_overlay(y, yrep = yrep[sample(1:ncycles, 100),]) + ggtitle("Model A: de
 
 ppc_error_scatter_avg(y, yrep = yrep) + ggtitle("Model A: scatter plot comparing the response to the average predictive error")
 
-ppc_intervals(y, yrep = yrep)
-
-ppc_error_scatter_avg_vs_x(y = y, yrep = yrep, x = df$lcarat)
 ppc_intervals(y = y, yrep = yrep, x = df$lcarat) + ggtitle("Model A: Posterior predictive intervals to the observed data values") + xlab("log carat") + ylab("log price")
 ```
 
@@ -342,16 +341,13 @@ ppc_hist(y, yrep[sample(1:ncycles, 8),]) + ggtitle("Model B: histogram comparing
 
 
 # scatterplot of y vs average yrep
-ppc_scatter_avg(y, yrep) + ggtitle("Model A: scatterplot comparing the response to the average replicated data set")
+ppc_scatter_avg(y, yrep) + ggtitle("Model B: scatterplot comparing the response to the average replicated data set")
 
-ppc_dens_overlay(y, yrep = yrep[sample(1:ncycles, 100),]) + ggtitle("Model A: density plot comparing the density of the response to the densities of 100 replicated data sets")
+ppc_dens_overlay(y, yrep = yrep[sample(1:ncycles, 100),]) + ggtitle("Model B: density plot comparing the density of the response to the densities of 100 replicated data sets")
 
-ppc_error_scatter_avg(y, yrep = yrep) + ggtitle("Model A: scatter plot comparing the response to the average predictive error")
+ppc_error_scatter_avg(y, yrep = yrep) + ggtitle("Model B: scatter plot comparing the response to the average predictive error")
 
-ppc_intervals(y, yrep = yrep)
-
-ppc_error_scatter_avg_vs_x(y = y, yrep = yrep, x = df$lcarat)
-ppc_intervals(y = y, yrep = yrep, x = df$lcarat) + ggtitle("Model A: Posterior predictive intervals to the observed data values") + xlab("log carat") + ylab("log price")
+ppc_intervals(y = y, yrep = yrep, x = df$carat) + ggtitle("Model B: Posterior predictive intervals to the observed data values") + xlab("carat") + ylab("price")
 ```
 
 ```{r Problem 5 Model C, include=FALSE}
@@ -500,7 +496,7 @@ summary(r_fit_D, pars = c("sigmaSQ", "beta0", "beta1", "beta2"), prob = c(0.025,
 
 ```
 
-```{r Problem 6, include=FALSE}
+```{r Problem 6_a WAIC/LOOIC include=FALSE}
 waic_loo = function (fit) {
   log_lik = extract_log_lik(fit, merge_chains = FALSE)
   r_eff = exp(relative_eff(log_lik))
@@ -520,7 +516,114 @@ wl[2,3] = waic_loo(r_fit_D)[2]
 wl
 ```
 
-```{r}
+```{r Problem 6_b, effects plots}
+samples = extract(r_fit_D)
+ncycles = length(samples[[1]])
+T <- length(df$price)
+df$notic = as.integer(df$inclusions == "noticeable")
+
+# each row of yrep is a sample from the pp distribution
+yrep = matrix(0, ncol = T, nrow = ncycles)
+for (i in seq_len(T)) {
+  mui = samples$beta0 + samples$beta1 * df$lcarat[i] + samples$beta2 * df$notic[i]
+  yrep[, i] = rlnorm(ncycles, mean = mui, sd = sqrt(samples$sigmaSQ))
+}
+
+color_scheme_set("blue")
+ppc_intervals_grouped(y = df$price, yrep = yrep, x = df$carat, prob = 0.5, prob_outer = .95, group = df$notic) + ggtitle("Model D: Posterior predictive intervals to the observed data values") + xlab("lcarat") + ylab("price")
+
+
+find_ep = function(yrep, min = 0.1, max = 2.4, step=0.1) {
+  ep = array(0, dim=c((max-min+step)/step, 5), dimnames = list(c(), c("carat_min", "carat_max", "2.5%","Mean","97.5%")))
+  n=0
+  for (i in seq(min+step, max, by=step)) {
+    n=n+1
+    subset = ((df$carat>(i-step)) & (df$carat<=i))
+    yrep_subset = yrep[,subset]
+    ep[n,1] = i-step
+    ep[n,2] = i
+    q = quantile(yrep_subset, probs = c(0.025, 0.975))
+    ep[n,3] = q[[1]]
+    ep[n,4] = mean(yrep_subset)
+    ep[n,5] = q[[2]]
+  }
+return(ep)
+}
+
+find_ep(yrep)
+temp = ppc_intervals_data(y = df$price, yrep = yrep, x = df$lcarat, prob = 0.5, prob_outer = .95, group = df$notic)
+```
+
+```{r Problem 7_a Model E include=FALSE}
+
+stan_mod_E = "
+data {
+  int T;
+  vector[T] lpr;    // log price 
+  vector[T] lcar;   // log carat 
+  real<lower=0> v;  // sample variance of log price 
+
+}
+
+parameters {
+  real<lower=0> sigmaSQ;
+  real beta0;
+  real beta1;
+}
+
+transformed parameters {
+  vector[T] mu;
+  for (i in 1:T) {
+    mu[i] = beta0 + beta1 * lcar[i];
+  }
+
+}
+
+model {
+  sigmaSQ ~ inv_gamma(0.01, 0.01);
+  beta0 ~ normal(0, 100);
+  beta1 ~ normal(0, 100);
+
+  for (i in 1:T)
+    lpr[i] ~ normal(mu[i], sqrt(sigmaSQ));
+}
+generated quantities {
+  vector[T] log_lik;
+  vector[T] y_rep;
+
+  //vector[T] lik;
+  real Rbsq;              // goodness-of-fit
+  Rbsq = 1 - sigmaSQ/v;
+  
+  for (i in 1:T) {
+    log_lik[i] = normal_lpdf(lpr[i] | mu[i], sqrt(sigmaSQ));
+    y_rep[i] = normal_rng(mu[i], sqrt(sigmaSQ));
+    //lik[i] = exp(log_lik[i]);
+  }
+
+}
+"
+
+T <- length(df$lprice)
+v = var(df$lprice)
+set.seed(90)
+
+model_name = "Model_A_"
+stan_dat_A = list(T = T, lpr = df$lprice, lcar = df$lcarat, v = v)
+r_fit_A = stan(model_code = stan_mod_A, data = stan_dat_A, 
+             iter = 5000, chains = 4, 
+             control = list(max_treedepth = 21))
+
+#file_name = paste(model_name, as.character(Sys.Date()), ".rda", sep="")
+#setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/code/Bayesian_Statistics_Class_Code/Exam_code')
+#readRDS(r_fit, file = "") 
+#saveRDS(r_fit, file = file_name, compress = "xz") 
+
+summary(r_fit_A, pars = c("sigmaSQ", "beta0", "beta1"), prob = c(0.025, 0.975))$summary
+
+#sso <- launch_shinystan(r_fit_A)
+
+```
 
 ```
 
