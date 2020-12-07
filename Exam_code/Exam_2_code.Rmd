@@ -14,6 +14,8 @@ library(shinystan)
 library(invgamma)
 library(bayesplot)
 library(posterior)
+library(rstanarm)
+
 
 devtools::install_github("jfrench/bayesutils")
 
@@ -496,7 +498,8 @@ summary(r_fit_D, pars = c("sigmaSQ", "beta0", "beta1", "beta2"), prob = c(0.025,
 
 ```
 
-```{r Problem 6_a WAIC/LOOIC include=FALSE}
+```{r Problem 6a WAIC/LOOIC, include=FALSE}
+
 waic_loo = function (fit) {
   log_lik = extract_log_lik(fit, merge_chains = FALSE)
   r_eff = exp(relative_eff(log_lik))
@@ -516,7 +519,7 @@ wl[2,3] = waic_loo(r_fit_D)[2]
 wl
 ```
 
-```{r Problem 6_b, effects plots}
+```{r Problem 6b effects plots}
 samples = extract(r_fit_D)
 ncycles = length(samples[[1]])
 T <- length(df$price)
@@ -552,78 +555,114 @@ return(ep)
 
 find_ep(yrep)
 temp = ppc_intervals_data(y = df$price, yrep = yrep, x = df$lcarat, prob = 0.5, prob_outer = .95, group = df$notic)
+
 ```
 
-```{r Problem 7_a Model E include=FALSE}
+```{r Problem 7_a Model E, include=FALSE}
 
 stan_mod_E = "
 data {
   int T;
-  vector[T] lpr;    // log price 
-  vector[T] lcar;   // log carat 
-  real<lower=0> v;  // sample variance of log price 
-
+  int deaths[T]; // COVID-19 deaths
+  vector[T] log_pop;    // log of U.S. states population,
+  vector[T] income; // median income (USD)
+  vector[T] bs;     // percentage of the population with bachelor’s degrees.
 }
 
 parameters {
-  real<lower=0> sigmaSQ;
   real beta0;
   real beta1;
+  real beta2;
 }
-
 transformed parameters {
-  vector[T] mu;
+  real log_lambda[T];
   for (i in 1:T) {
-    mu[i] = beta0 + beta1 * lcar[i];
+   log_lambda[i] = log_pop[i] + beta0 + beta1 * income[i] + beta2 * bs[i];
   }
 
 }
 
 model {
-  sigmaSQ ~ inv_gamma(0.01, 0.01);
-  beta0 ~ normal(0, 100);
-  beta1 ~ normal(0, 100);
-
-  for (i in 1:T)
-    lpr[i] ~ normal(mu[i], sqrt(sigmaSQ));
+  beta0 ~ normal(0, 5);
+  beta1 ~ normal(0, 5);
+  beta2 ~ normal(0, 5);
+ 
+  for (i in 1:T) {
+    deaths[i] ~ poisson_log(log_lambda[i]);
+  }
 }
 generated quantities {
   vector[T] log_lik;
-  vector[T] y_rep;
 
-  //vector[T] lik;
-  real Rbsq;              // goodness-of-fit
-  Rbsq = 1 - sigmaSQ/v;
-  
   for (i in 1:T) {
-    log_lik[i] = normal_lpdf(lpr[i] | mu[i], sqrt(sigmaSQ));
-    y_rep[i] = normal_rng(mu[i], sqrt(sigmaSQ));
-    //lik[i] = exp(log_lik[i]);
-  }
-
+    log_lik[i] = poisson_lpmf(deaths[i] | exp(log_lambda[i]));
+  }  
+  
 }
+
 "
 
-T <- length(df$lprice)
-v = var(df$lprice)
-set.seed(90)
+T <- length(df_covid$bs)
+set.seed(94)
 
-model_name = "Model_A_"
-stan_dat_A = list(T = T, lpr = df$lprice, lcar = df$lcarat, v = v)
-r_fit_A = stan(model_code = stan_mod_A, data = stan_dat_A, 
-             iter = 5000, chains = 4, 
+model_name = "Model_E_"
+stan_dat_E = list(T = T, deaths = df_covid$deaths, log_pop = log(df_covid$population), 
+                  income = df_covid$income, bs = df_covid$bs)
+r_fit_E = stan(model_code = stan_mod_E, data = stan_dat_E, 
+             iter = 50000, chains = 2, 
              control = list(max_treedepth = 21))
 
-#file_name = paste(model_name, as.character(Sys.Date()), ".rda", sep="")
-#setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/code/Bayesian_Statistics_Class_Code/Exam_code')
+summary(r_fit_E, pars = c("beta0", "beta1", "beta2"), prob = c(0.025, 0.975))$summary
+
+#sso <- launch_shinystan(r_fit_E)
+file_name = paste(model_name, as.character(Sys.Date()), ".rda", sep="")
+setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/code/Bayesian_Statistics_Class_Code/Exam_code')
 #readRDS(r_fit, file = "") 
-#saveRDS(r_fit, file = file_name, compress = "xz") 
+#saveRDS(r_fit_E, file = file_name, compress = "xz") 
+```
 
-summary(r_fit_A, pars = c("sigmaSQ", "beta0", "beta1"), prob = c(0.025, 0.975))$summary
+```{r Problem 7_b rstanarm Model E, include=FALSE}
+df_covid_rstan = data.frame(int = 1, 
+                            deaths = df_covid$deaths,
+                            log_pop = log(df_covid$population), 
+                            income = df_covid$income,
+                            bs = df_covid$bs)
+fit_rstanarm_E = stan_glm(deaths ~ int + income + bs, 
+                 offset = log_pop,
+                 family = poisson(link = "log"),
+                 data = df_covid_rstan,
+                 iter = 10000, chains = 2)
 
-#sso <- launch_shinystan(r_fit_A)
+summary(fit_rstanarm_E, digits = 6)
+
+-0.000054 * 30697
+(24191 - 39682) * -0.000054
+
+(17.50 - 39.00) * 0.060348
+```
+
+```{r Problem 7_c STAN Model E WAIC LOOIC}
+cat("STAN Model E WAIC", waic_loo(r_fit_E)[1])
+cat("STAN Model E LOOIC", waic_loo(r_fit_E)[2])
+```
+
+```{r Problem 7_d STAN Model E ppc}
+samples = extract(r_fit_E)
+ncycles = length(samples[[1]])
+T <- length(df_covid$bs)
+
+# each row of yrep is a sample from the pp distribution
+yrep = matrix(0, ncol = T, nrow = ncycles)
+for (i in seq_len(T)) {
+  log_l = log(df_covid$population[i]) +
+    samples$beta0 + 
+    samples$beta1 * df_covid$income[i] + 
+    samples$beta2 * df_covid$bs[i]
+  yrep[, i] = rpois(ncycles, lambda = exp(log_l))
+}
+
+ppc_intervals(y = y, yrep = yrep, x = df_covid$state_abb) + ggtitle("Model A: Posterior predictive intervals to the observed data values") + xlab("State") + ylab("Covid deaths")
 
 ```
 
-```
 
