@@ -16,7 +16,7 @@ parameters {
 transformed parameters {
   real eta[T];
   for (i in 1:T) {
-   eta[i] = log_pop[i] + beta0 + beta1 * income[i] + beta2 * bs[i];
+   eta[i] = exp(log_pop[i] + beta0 + beta1 * income[i] + beta2 * bs[i]);
   }
 
 }
@@ -28,14 +28,14 @@ model {
   phi ~ gamma(0.01, 0.01);
 
   for (i in 1:T) {
-    deaths[i] ~ neg_binomial_2_log(eta[i], phi);
+    deaths[i] ~ neg_binomial_2(exp(eta[i]), phi);
   }
 }
 generated quantities {
   vector[T] log_lik;
 
   for (i in 1:T) {
-    log_lik[i] = neg_binomial_2_log_lpmf(deaths[i] | eta[i],  phi);
+    log_lik[i] = neg_binomial_2_lpmf(deaths[i] | exp(eta[i]),  phi);
   }  
   
 }
@@ -58,7 +58,7 @@ summary(r_fit_F, pars = c("beta0", "beta1", "beta2", "phi"), prob = c(0.025, 0.9
 file_name = paste(model_name, as.character(Sys.Date()), ".rda", sep="")
 setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/code/Bayesian_Statistics_Class_Code/Exam_code')
 #readRDS(r_fit, file = "") 
-#saveRDS(r_fit_F, file = file_name, compress = "xz") 
+saveRDS(r_fit_F, file = file_name, compress = "xz") 
 
 
 cat("STAN Model F WAIC", waic_loo(r_fit_F)[1])

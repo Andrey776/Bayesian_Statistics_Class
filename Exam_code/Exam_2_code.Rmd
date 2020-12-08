@@ -717,7 +717,7 @@ parameters {
 transformed parameters {
   real eta[T];
   for (i in 1:T) {
-   eta[i] = exp(log_pop[i] + beta0 + beta1 * income[i] + beta2 * bs[i]);
+   eta[i] = log_pop[i] + beta0 + beta1 * income[i] + beta2 * bs[i];
   }
 
 }
