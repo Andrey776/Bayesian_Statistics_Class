@@ -1,0 +1,165 @@
+---
+title: "5792 Final exam Andrei Matveev R code"
+output: html_notebook
+---
+
+```{r Problem 1}
+#1a
+N=10^7
+t = runif(1,0,3)
+s = t+runif(1,0,3)
+
+Zt = rnorm(N, 0, sqrt(t))
+Zs = Zt+rnorm(N, 0, sqrt(s-t))
+#1a
+mean(Zs*Zt)
+t
+#1b
+mean(Zs*Zt*Zt)
+#1c
+mean(Zs*Zt^3)
+3*t^2
+
+
+```
+
+```{r Problem 2}
+dt=0.0000001
+T = runif(1,0,1)
+Z=0
+I_dZ = 0
+I_dt = 0
+for (i in (1:(T/dt))) {
+  dZ = rnorm(1, 0, sqrt(dt))
+  I_dZ = I_dZ + cos(Z) * dZ
+  I_dt = I_dt - sin(Z) * dt
+  Z = Z + dZ
+}
+cat("integral dZ = ", I_dZ,"; sin(Z) - 0.5 * I_dt = ", sin(Z) - 0.5 * I_dt)
+
+```
+
+```{r Problem 3}
+dt = 10^-5
+sd = sqrt(dt) #for comp efficiency
+N=1000
+a = 1
+mb = -0.5 # mb goes for "minus b", not to mess it up later
+mc = -1
+
+run_bm = function(a, mb, mc) {
+  flag_Ta = FALSE
+  flag_Tmb = FALSE
+  flag_Tmc = FALSE
+  Z=0
+  while (TRUE) {
+    dZ = rnorm(1, 0, sd = sd)
+    Z = Z + dZ
+    if (Z > a) {
+      flag_Ta = TRUE
+      break
+    }
+    if (Z < mb) {flag_Tmb = TRUE}
+    if (Z < mc) {
+      flag_Tmc = TRUE
+      break
+    }
+  }
+  return(list(flag_Ta, flag_Tmb, flag_Tmc))
+}
+
+outcome = array(NA, dim=N)
+for (i in (1:N)) {
+  f = run_bm(a = a, mb = mb, mc = mc)
+  if (f[3] == TRUE) {
+    outcome[i] = 1
+  } else {
+      if (f[2] == TRUE) {
+        outcome[i] = 2
+      } else {
+          if (f[1] == TRUE) {
+            outcome[i] = 3
+          } else {outcome[i] = 4} # not possible if work correctly, just a quality check
+      }
+    }
+  cat("\r Brownian motion run #", i, "out of ", N)
+}
+cat("P(m(T_a) < -b | T_a < T_-c) ", sum(outcome == 2)/(sum(outcome == 2) + sum(outcome == 3)))
+hist(outcome)
+
+```
+
+
+```{r Problem 5}
+dt = 10^-5
+T = 2
+sd = sqrt(dt) #for comp efficiency
+N=30000 # number of Brownian motion chains
+resolution = 0.1 # resolution of the VAR path
+Z=0
+int_dZ = 0
+int_dt = 0
+t = 0
+ind = 0
+var_df = as.data.frame(array(NA, dim = c(T/resolution,3), 
+                             dimnames = list(c(), c("Time","Var_int_ZdZ", "Var_Ito's"))))
+for (i in (1:(T/dt))) {
+  dZ = rnorm(N, 0, sd = sd)
+  int_dZ = int_dZ + (Z^2) * dZ
+  int_dt = int_dt + Z * dt
+  if (t > resolution) {
+    ind = ind + 1
+    var_df$Time[ind] = i*dt
+    var_df$Var_int_ZdZ[ind] = var(int_dZ)
+    var_df$`Var_Ito's`[ind] = var((Z^3)/3 - int_dt)
+    t = 0
+    cat("\r Brownian motion time #", i*dt, "out of ", T)
+  }
+  t=t+dt
+  Z = Z + dZ
+}
+
+cat("var(int_dZ) = ", var(int_dZ), "var(ito's) = ", var((Z^3)/3 - int_dt) )
+
+```
+
+```{r Problem 5 not efficient}
+dt = 10^-5
+T = runif(1,0,3)
+sd = sqrt(dt) #for comp efficiency
+N=100
+
+run_bm = function(T, dt) {
+  Z=0
+  int_dZ = 0
+  int_dt = 0
+  for (i in (1:(T/dt))) {
+    dZ = rnorm(1, 0, sd = sd)
+    int_dZ = int_dZ + (Z^2) * dZ
+    int_dt = int_dt + Z * dt
+    Z = Z + dZ
+  
+  }
+  return(list(int_dZ, int_dt, Z))
+}
+f = run_bm(T, dt)
+cat("int_dZ = ", f[[1]], "ito's = ", (f[[3]]^3)/3 - f[[2]] )
+
+E_dZ = 0
+V_dZ = 0
+E_ito = 0
+V_ito = 0
+for (i in (1:N)) {
+  f = run_bm(T, dt)
+  ito = (f[[3]]^3)/3 - f[[2]]
+  int_dZ = f[[1]]
+  E_dZ = E_dZ + int_dZ
+  V_dZ = V_dZ + int_dZ^2
+  E_ito = E_ito + ito
+  V_ito = V_ito + ito^2
+  cat("\r Brownian motion run #", i, "out of ", N)
+  }
+(var_dZ = V_dZ/N - (E_dZ/N)^2)
+(var_ito = V_ito/N - (E_ito/N)^2)
+```
+
