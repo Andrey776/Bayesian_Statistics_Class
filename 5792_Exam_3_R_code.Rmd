@@ -91,16 +91,17 @@ hist(outcome)
 
 ```{r Problem 4_a hard way}
 T = 1 # time of interest
+m1 = 2 # mu1 for state 1
+m2 = 3 # mu2 for state 2
+l1 = 10 # lambda1 for state 1
+l2 = 30 # lambda2 for state 2
+
 run_the_chain = function(T=1) {
   t = 0 # current time
-  m1 = 2 # mu1 for state 1
-  m2 = 3 # mu2 for state 2
-  l1 = 10 # lambda1 for state 1
-  l2 = 30 # lambda2 for state 2
   t_state_1 = 0 # total time in state 1
   t_state_2 = 0 # total time in state 2
   state = 1 # starting state
-  N = 0 # the total number of customers that have entered the store
+  N = 0     # the total number of customers that have entered the store
   
   time_increment = function(current_state, delta_time) {
     t <<- t + delta_time
@@ -120,27 +121,42 @@ run_the_chain = function(T=1) {
       t_arr = rexp(1,l2)
       t_next_state = rexp(1,m2)
     }
+    
     if (t_arr < t_next_state) {
-      time_increment(current_state = state, delta_time = t_arr)
+      t = t + t_arr
+      if (state == 1) {
+        t_state_1 = t_state_1 + t_arr
+      } else {
+        t_state_2 = t_state_2 + t_arr
+      }      
       N = N + 1
       flag = 1
     } else {
-      time_increment(current_state = state, delta_time = t_next_state)
+      t = t + t_next_state
+      if (state == 1) {
+        t_state_1 = t_state_1 + t_next_state
+      } else {
+        t_state_2 = t_state_2 + t_next_state
+      }   
       if (state == 1) {state = 2} else {state = 1} # switch state
     }
   #cat("\r", i, "state is", state)
   #invisible(readline(prompt="Press [enter] to continue"))  
   }
   if (flag ==1) {N = N-1} # deduction because arrival is after time T
-return(N)
+return(array(c(N, t_state_1, t_state_2)))
 }
 
 EN = 0
-Iter = 10^5
+EN_tl = 0 
+Iter = 10^4
 for (i in (1:Iter)) {
-  EN = EN + run_the_chain(T=T)
+  bm = run_the_chain(T=T)
+  EN = EN + bm[1]
+  EN_tl = EN_tl + l1 * bm[2] + l2 * bm[3]
 }
 (EN = EN/Iter)
+(EN_tl = EN_tl/Iter)
 ```
 
 ```{r Problem 4_a simple way}

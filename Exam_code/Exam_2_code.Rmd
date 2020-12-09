@@ -223,8 +223,7 @@ data {
   vector[T] car;    // carat 
   real<lower=0> v;  // sample variance of log price 
 
-}
-
+} # test the save
 parameters {
   real<lower=0> sigmaSQ;
   real beta0;
