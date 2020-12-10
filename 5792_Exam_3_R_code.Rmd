@@ -5,26 +5,23 @@ output: html_notebook
 
 ```{r Problem 1}
 #1a
-N=10^7
+N=10^8
 t = runif(1,0,3)
 s = t+runif(1,0,3)
 
 Zt = rnorm(N, 0, sqrt(t))
 Zs = Zt+rnorm(N, 0, sqrt(s-t))
 #1a
-mean(Zs*Zt)
-t
+cat("mean(Zs*Zt) =", mean(Zs*Zt), "; t =",  t)
 #1b
-mean(Zs*Zt*Zt)
+cat("mean(Zs*Zt*Zt) = ", mean(Zs*Zt*Zt))
 #1c
-mean(Zs*Zt^3)
-3*t^2
-
-
+cat("the mean", mean(Zs*Zt^3), "; 3*t^2",  3*t^2)
+rm(Zt, Zs)
 ```
 
 ```{r Problem 2}
-dt=0.0000001
+dt=10^-7
 T = runif(1,0,1)
 Z=0
 I_dZ = 0
@@ -103,15 +100,6 @@ run_the_chain = function(T=1) {
   state = 1 # starting state
   N = 0     # the total number of customers that have entered the store
   
-  time_increment = function(current_state, delta_time) {
-    t <<- t + delta_time
-    if (current_state == 1) {
-        t_state_1 <<- t_state_1 + delta_time
-      } else {
-        t_state_2 <<- t_state_2 + delta_time
-      }
-  }
-  
   while (t < T) {
     flag = 0 # flag to track a customer who entered after time T
     if (state == 1) {
@@ -139,24 +127,25 @@ run_the_chain = function(T=1) {
         t_state_2 = t_state_2 + t_next_state
       }   
       if (state == 1) {state = 2} else {state = 1} # switch state
+      flag = 0
     }
-  #cat("\r", i, "state is", state)
-  #invisible(readline(prompt="Press [enter] to continue"))  
   }
-  if (flag ==1) {N = N-1} # deduction because arrival is after time T
+  if (flag ==1) {
+    N = N - 1 # deduction because arrival is after time T AND state was not changed
+    if (state == 1) {t_state_1 = t_state_1 - (t - 1)} else {t_state_2 = t_state_2 - (t - 1)}
+  } else {
+    if (state == 1) {t_state_2 = t_state_2 - (t - 1)} else {t_state_1 = t_state_1 - (t - 1)}
+  }
 return(array(c(N, t_state_1, t_state_2)))
 }
 
 EN = 0
-EN_tl = 0 
-Iter = 10^4
+Iter = 10^5
 for (i in (1:Iter)) {
   bm = run_the_chain(T=T)
   EN = EN + bm[1]
-  EN_tl = EN_tl + l1 * bm[2] + l2 * bm[3]
 }
 (EN = EN/Iter)
-(EN_tl = EN_tl/Iter)
 ```
 
 ```{r Problem 4_a simple way}
@@ -165,16 +154,14 @@ l1 = 10 # lambda1 for state 1
 l2 = 30 # lambda2 for state 2
 m1 = 2 # mu1 for state 1
 m2 = 3 # mu2 for state 2
-state = 1 # starting state
 
 EN = 0
-Iter = 10^5
-
+Iter = 10^6
 for (i in (1:Iter)) {
-  t = 0 # current time
+  t = 0         # current time
   t_state_1 = 0 # total time in state 1
   t_state_2 = 0 # total time in state 2
-  state = 1 # starting state
+  state = 1     # starting state
 
   while (t < T) {
     if (state == 1) {
@@ -192,11 +179,37 @@ for (i in (1:Iter)) {
   if (state == 2) {t_state_1 = t_state_1 - (t - 1)} else {t_state_2 = t_state_2 - (t - 1)}
   # deduction because arrival is after time T
 
-  EN = EN + l1 * t_state_1 + l2 * t_state_1
+  EN = EN + l1 * t_state_1 + l2 * t_state_2 # means of arrivals for Poisson lambda over time t 
 }
 (EN = EN/Iter)
+
 ```
 
+```{r Problem 4_b analytical}
+T=0.12345
+Q_hat = matrix(data = c(-l1-m1, m1, m2,-l2-m2),
+           nrow=2, ncol=2, 
+           byrow = TRUE)
+(expm(Q_hat * T)%*%c(1,1))[1]
+                    
+```
+
+```{r Problem 4_b based on the hard way}
+
+T = 0.12345 # time of interest
+m1 = 2 # mu1 for state 1
+m2 = 3 # mu2 for state 2
+l1 = 10 # lambda1 for state 1
+l2 = 30 # lambda2 for state 2
+no_arr = 0
+Iter = 10^7
+for (i in (1:Iter)) {
+  bm = run_the_chain(T=T)
+  if (bm[1] == 0) {no_arr = no_arr + 1}
+}
+cat("frequency of no arrival", no_arr/Iter)
+
+```
 
 ```{r Problem 5}
 dt = 10^-5
