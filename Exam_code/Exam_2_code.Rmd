@@ -64,8 +64,8 @@ mh = function(B, theta_start) {
       log(dtruncnorm(x = sigmaSQ_star, a=0, b=Inf, mean = theta[(i-1),1], sd = 0.1))
     den_logr = lq_theta_y(sigmaSQ = theta[i-1, 1], beta0 = beta0_star, beta1 = beta1_star) -
       log(dtruncnorm(x = theta[i-1, 1], a=0, b=Inf, mean = sigmaSQ_star, sd = 0.1)) 
-## !!! is the mean correct? Should  we use in den_logr mean = sigmaSQ_star or mean = theta[i-1, 1]? 
-# check c-componentwise-mh v1 line 68, 72
+
+    
     logr = num_logr - den_logr
     if (log(runif(1)) <= min(logr, 0)) {
       theta[i,1] = sigmaSQ_star
@@ -83,8 +83,8 @@ mh = function(B, theta_start) {
       dnorm(x = beta0_star, mean = theta[(i-1),2], sd = 0.1, log = TRUE)
     den_logr = lq_theta_y(sigmaSQ = sigmaSQ_star, beta0 = theta[i-1, 2], beta1 = beta1_star) -
       dnorm(x = theta[(i-1),2], mean = beta0_star, sd = 0.1, log = TRUE)
-## !!! is the mean correct? Should  we use in den_logr mean = sigmaSQ_star or mean = theta[i-1, 1]? 
-# check c-componentwise-mh v1 line 68, 72
+
+    
     logr = num_logr - den_logr
     if (log(runif(1)) <= min(logr, 0)) {
       theta[i,2] = beta0_star
@@ -96,14 +96,14 @@ mh = function(B, theta_start) {
     sigmaSQ_star = theta[i,1] # it is the repeated code, but I need it to keep the interpretability
     beta0_star = theta[i,2] # update beta0_star after the Gibbs step for beta0
 
-    beta1_star = rnorm(1, theta[(i-1),3], 0.1) # !!! check the parametrization (0.1 or 0.1^2)
+    beta1_star = rnorm(1, theta[(i-1),3], 0.1) # 
     
     num_logr = lq_theta_y(sigmaSQ = sigmaSQ_star, beta0 = beta0_star, beta1 = beta1_star) -
       dnorm(x = beta1_star, mean = theta[(i-1),3], sd = 0.1, log = TRUE)
     den_logr = lq_theta_y(sigmaSQ = sigmaSQ_star, beta0 = beta0_star, beta1 = theta[i-1, 3]) -
       dnorm(x = theta[(i-1),3], mean = beta1_star, sd = 0.1, log = TRUE)
-## !!! is the mean correct? Should  we use in den_logr mean = sigmaSQ_star or mean = theta[i-1, 1]? 
-# check c-componentwise-mh v1 line 68, 72
+
+    
     logr = num_logr - den_logr
     if (log(runif(1)) <= min(logr, 0)) {
       theta[i,3] = beta1_star
@@ -134,7 +134,7 @@ summary(mc)
 
 ```{r Problem 2 to assess the convergence}
 
-keep = (B/2 + 19001):(B/2 + 20001)
+keep = (B/2 + 17001):(B/2 + 18001)
 
 mc = mcmc.list(mcmc(chain1[keep,]), mcmc(chain2[keep,]),
                  mcmc(chain3[keep,]), mcmc(chain4[keep,]))

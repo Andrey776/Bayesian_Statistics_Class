@@ -16,7 +16,7 @@ cat("mean(Zs*Zt) =", mean(Zs*Zt), "; t =",  t)
 #1b
 cat("mean(Zs*Zt*Zt) = ", mean(Zs*Zt*Zt))
 #1c
-cat("the mean", mean(Zs*Zt^3), "; 3*t^2",  3*t^2)
+cat("the mean = ", mean(Zs*Zt^3), "; 3*t^2 = ",  3*t^2)
 rm(Zt, Zs)
 ```
 
@@ -186,6 +186,7 @@ for (i in (1:Iter)) {
 ```
 
 ```{r Problem 4_b analytical}
+library(expm)
 T=0.12345
 Q_hat = matrix(data = c(-l1-m1, m1, m2,-l2-m2),
            nrow=2, ncol=2, 
