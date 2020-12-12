@@ -1,13 +1,18 @@
 ---
 title: "7393 Exam 2 R Code Andrei Matveev"
-output: html_notebook
+output:
+  html_notebook: default
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
 ---
 ```{r Data and set up}
 
 #library(data.table)
 library(truncnorm)
 library(coda)
-devtools::install_github("stan-dev/loo")
+#devtools::install_github("stan-dev/loo")
 library(loo)
 library(rstan) 
 library(shinystan)
@@ -145,7 +150,7 @@ geweke.diag(mc)
 
 ```
 
-```{r Problem 3 Model A, include=FALSE}
+```{r Problem 3 Model A}
 stan_mod_A = "
 data {
   int T;
@@ -206,7 +211,7 @@ r_fit_A = stan(model_code = stan_mod_A, data = stan_dat_A,
 
 #file_name = paste(model_name, as.character(Sys.Date()), ".rda", sep="")
 #setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/code/Bayesian_Statistics_Class_Code/Exam_code')
-#readRDS(r_fit, file = "") 
+#readRDS(file = "") 
 #saveRDS(r_fit, file = file_name, compress = "xz") 
 
 summary(r_fit_A, pars = c("sigmaSQ", "beta0", "beta1"), prob = c(0.025, 0.975))$summary
@@ -215,7 +220,7 @@ summary(r_fit_A, pars = c("sigmaSQ", "beta0", "beta1"), prob = c(0.025, 0.975))$
 
 ```
 
-```{r Problem 3 Model B, include=FALSE}
+```{r Problem 3 Model B}
 stan_mod_B = "
 data {
   int T;
@@ -351,7 +356,7 @@ ppc_error_scatter_avg(y, yrep = yrep) + ggtitle("Model B: scatter plot comparing
 ppc_intervals(y = y, yrep = yrep, x = df$carat) + ggtitle("Model B: Posterior predictive intervals to the observed data values") + xlab("carat") + ylab("price")
 ```
 
-```{r Problem 5 Model C, include=FALSE}
+```{r Problem 5 Model C}
 stan_mod_C = "
 data {
   int T;
@@ -412,7 +417,7 @@ r_fit_C = stan(model_code = stan_mod_C, data = stan_dat_C,
 
 #file_name = paste(model_name, as.character(Sys.Date()), ".rda", sep="")
 #setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/code/Bayesian_Statistics_Class_Code/Exam_code')
-#readRDS(r_fit, file = "") 
+#readRDS(file = "") 
 #saveRDS(r_fit, file = file_name, compress = "xz") 
 
 summary(r_fit_C, pars = c("sigmaSQ", "beta0", "beta1"), prob = c(0.025, 0.975))$summary
@@ -421,7 +426,7 @@ summary(r_fit_C, pars = c("sigmaSQ", "beta0", "beta1"), prob = c(0.025, 0.975))$
 
 ```
 
-```{r Problem 5 Model D, include=FALSE}
+```{r Problem 5 Model D}
 stan_mod_D = "
 data {
   int T;
@@ -483,7 +488,7 @@ r_fit_D = stan(model_code = stan_mod_D, data = stan_dat_D,
 
 #file_name = paste(model_name, as.character(Sys.Date()), ".rda", sep="")
 #setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/code/Bayesian_Statistics_Class_Code/Exam_code')
-#readRDS(r_fit, file = "") 
+#readRDS(file = "") 
 #saveRDS(r_fit, file = file_name, compress = "xz") 
 
 summary(r_fit_D, pars = c("sigmaSQ", "beta0", "beta1", "beta2"), prob = c(0.025, 0.975))$summary
@@ -492,7 +497,7 @@ summary(r_fit_D, pars = c("sigmaSQ", "beta0", "beta1", "beta2"), prob = c(0.025,
 
 ```
 
-```{r Problem 6a WAIC/LOOIC, include=FALSE}
+```{r Problem 6a WAIC/LOOIC}
 
 waic_loo = function (fit) {
   log_lik = extract_log_lik(fit, merge_chains = FALSE)
@@ -546,44 +551,7 @@ ggplot(df_sim,
 
 ```
 
-```{r Problem 6b effects plots Model D _ JUST THOUGHTS}
-# samples = extract(r_fit_D)
-# ncycles = length(samples[[1]])
-# T <- length(df$price)
-# #each row of yrep is a sample from the pp distribution
-# yrep = matrix(0, ncol = T, nrow = ncycles)
-# for (i in seq_len(T)) {
-#   mui = samples$beta0 + samples$beta1 * df$lcarat[i] +
-#     samples$beta2 * as.integer(df$inclusions[i]=="noticeable")
-#   yrep[, i] = rlnorm(ncycles, mean = mui, sd = sqrt(samples$sigmaSQ))
-# }
-# df$notic = as.integer(df$inclusions == "noticeable")
-# color_scheme_set("blue")
-# ppc_intervals_grouped(y = df$price, yrep = yrep, x = df$carat, prob = 0.5, prob_outer = .95, group = df$notic) + ggtitle("Model D: Posterior predictive intervals to the observed data values") + xlab("lcarat") + ylab("price")
-# # 
-# 
-# find_ep = function(yrep, min = 0.1, max = 2.4, step=0.1) {
-#   ep = array(0, dim=c((max-min+step)/step, 5), dimnames = list(c(), c("carat_min", "carat_max", "2.5%","Mean","97.5%")))
-#   n=0
-#   for (i in seq(min+step, max, by=step)) {
-#     n=n+1
-#     subset = ((df$carat>(i-step)) & (df$carat<=i))
-#     yrep_subset = yrep[,subset]
-#     ep[n,1] = i-step
-#     ep[n,2] = i
-#     q = quantile(yrep_subset, probs = c(0.025, 0.975))
-#     ep[n,3] = q[[1]]
-#     ep[n,4] = mean(yrep_subset)
-#     ep[n,5] = q[[2]]
-#   }
-# return(ep)
-# }
-# find_ep(yrep)
-# temp = ppc_intervals_data(y = df$price, yrep = yrep, x = df$lcarat, prob = 0.5, prob_outer = .95, group = df$notic)
-
-```
-
-```{r Problem 7_a Model E, include=FALSE}
+```{r Problem 7_a Model E}
 
 stan_mod_E = "
 data {
@@ -642,11 +610,12 @@ summary(r_fit_E, pars = c("beta0", "beta1", "beta2"), prob = c(0.025, 0.975))$su
 #sso <- launch_shinystan(r_fit_E)
 file_name = paste(model_name, as.character(Sys.Date()), ".rda", sep="")
 setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/code/Bayesian_Statistics_Class_Code/Exam_code')
-#readRDS(r_fit, file = "") 
+#readRDS(file = "") 
 #saveRDS(r_fit_E, file = file_name, compress = "xz") 
 ```
 
-```{r Problem 7_b rstanarm Model E, include=FALSE}
+```{r Problem 7_b rstanarm Model E}
+
 df_covid_rstan = data.frame(int = 1, 
                             deaths = df_covid$deaths,
                             log_pop = log(df_covid$population), 
@@ -668,6 +637,9 @@ cat("STAN Model E LOOIC", waic_loo(r_fit_E)[2])
 ```
 
 ```{r Problem 8_d STAN Model E ppc}
+setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/code/Bayesian_Statistics_Class_Code/Exam_code')
+r_fit_E = readRDS(file = "Model_E_2020-12-07.rda") 
+
 samples = extract(r_fit_E)
 ncycles = length(samples[[1]])
 T <- length(df_covid$bs)
@@ -690,6 +662,10 @@ dif = ppc_intervals_data(y = df_covid$deaths, yrep = yrep, prob = 0.5, prob_oute
 dif$ratio = abs(dif$y_obs - dif$m)/ dif$y_obs
 cat("the worst prediction seems to be for StateID", which.max(dif$ratio), 
     df_covid$state_name[which.max(dif$ratio)])
+
+dif$abs = abs(dif$y_obs - dif$m)
+cat("the worst prediction seems to be for StateID", which.max(dif$abs), 
+    df_covid$state_name[which.max(dif$abs)])
 
 -0.000054 * 30697
 (24191 - 39682) * -0.000054
@@ -757,11 +733,9 @@ summary(r_fit_F, pars = c("beta0", "beta1", "beta2", "phi"), prob = c(0.025, 0.9
 #sso <- launch_shinystan(r_fit_F)
 file_name = paste(model_name, as.character(Sys.Date()), ".rda", sep="")
 setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/code/Bayesian_Statistics_Class_Code/Exam_code')
-#readRDS(r_fit, file = "") 
-#saveRDS(r_fit_E, file = file_name, compress = "xz") 
 ```
 
-```{r Problem 9_b rstanarm Model F, include=FALSE}
+```{r Problem 9_b rstanarm Model F}
 df_covid_rstan = data.frame(int = 1, 
                             deaths = df_covid$deaths,
                             log_pop = log(df_covid$population), 
